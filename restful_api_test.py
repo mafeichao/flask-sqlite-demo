@@ -2,18 +2,21 @@ from flask import Flask,request,render_template,g,jsonify,current_app
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash,check_password_hash
 from flask_httpauth import HTTPBasicAuth
-from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
+from authlib.jose import jwt, JoseError
+
 from flask_script import Manager
 
+import time
 import os
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 app = Flask(__name__)
 manager = Manager(app)
-db = SQLAlchemy(app)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////' + os.path.join(BASE_DIR, 'db.sqlite')
+
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(BASE_DIR, 'db.sqlite')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 app.config['SECRET_KEY'] = 'restful_api_test'
+db = SQLAlchemy(app)
 
 auth = HTTPBasicAuth()
 
@@ -34,17 +37,21 @@ class User(db.Model):
 
     #生成token
     def get_auth_token(self,expiration=3600):
-        s = Serializer(current_app.config['SECRET_KEY'],expires_in=expiration)
-        s = s.dumps({'id':self.id}).decode('utf-8')
-        return s
+        header = {'alg': 'HS256'}
+        key = current_app.config['SECRET_KEY']
+        data = {'id': self.id, "exp": expiration + time.time()}
+        s = jwt.encode(header=header, payload=data, key=key)
+        return str(s)
 
     #验证token
     @staticmethod
     def verify_auth_token(token):
-        s = Serializer(current_app.config['SECRET_KEY'])
+        key = current_app.config['SECRET_KEY']
+
         try:
-            data = s.loads(token)
-        except:
+            data = jwt.decode(token, key)
+            print(data)
+        except JoseError:
             return None
         return User.query.get(data['id'])
 
